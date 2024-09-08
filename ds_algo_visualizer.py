@@ -11,7 +11,7 @@ class SortVisualizer:
         self.canvas.pack()
 
         # Array entry for sorting algorithms
-        self.array_entry_label = tk.Label(root, text="Enter array (comma-separated):")
+        self.array_entry_label = tk.Label(root, text="Enter array (space-separated integers):")
         self.array_entry_label.pack()
         self.array_entry = tk.Entry(root)
         self.array_entry.pack()
@@ -93,7 +93,7 @@ class SortVisualizer:
         try:
             target = int(self.element_entry.get())
         except ValueError:
-            self.draw_data(data, message='Invalid input. Please enter an integer.')
+            self.draw_data(data, message='Invalid input. Please enter an integer.', message_color='red')
             return
 
         left, right = 0, len(data) - 1
@@ -117,13 +117,11 @@ class SortVisualizer:
     def update_data(self):
         user_input = self.array_entry.get()
         try:
-            self.data = list(map(int, user_input.split(',')))
+            # Split the input by spaces and convert to integers
+            self.data = list(map(int, user_input.split()))
             self.draw_data()
         except ValueError:
-            self.data = [random.randint(10, 300) for _ in range(10)]
-            self.array_entry.delete(0, tk.END)
-            self.array_entry.insert(0, ','.join(map(str, self.data)))
-            self.draw_data()
+            self.draw_data(message='Invalid input. Please enter only integers.', message_color='red')
 
     def show_array_entry_only(self):
         """Show array entry and hide element entry for sorting algorithms."""
