@@ -41,13 +41,18 @@ class SortVisualizer:
 
         self.data = []
 
-    def draw_data(self, data=None, highlight_index=None, highlight_color='red', message=None, message_color='black'):
+    def draw_data(self, data=None, highlight_index=None, highlight_color='red', message=None, message_color='black', sorted_indices=None):
         self.canvas.delete('all')
         if data is None:
             data = self.data
         width = 600 / len(data)
         for i, value in enumerate(data):
-            color = 'blue' if highlight_index is None or i != highlight_index else highlight_color
+            if sorted_indices and i in sorted_indices:
+                color = 'green'
+            elif highlight_index is not None and i == highlight_index:
+                color = highlight_color
+            else:
+                color = 'blue'
             # Draw the bar
             self.canvas.create_rectangle(i * width, 400 - value, (i + 1) * width, 400, fill=color)
             # Display the value above the bar
@@ -61,28 +66,32 @@ class SortVisualizer:
         self.update_data()
         data = self.data
         n = len(data)
+        sorted_indices = set()
         for i in range(n):
             for j in range(n - i - 1):
                 if data[j] > data[j + 1]:
                     data[j], data[j + 1] = data[j + 1], data[j]
-                    self.draw_data(data, j + 1)
-                    time.sleep(self.speed_scale.get())
-        self.draw_data(data)
+                self.draw_data(data, j + 1, sorted_indices=sorted_indices)
+                time.sleep(self.speed_scale.get())
+            sorted_indices.add(n - i - 1)
+        self.draw_data(data, sorted_indices=set(range(n)))
 
     def selection_sort(self):
         self.show_array_entry_only()
         self.update_data()
         data = self.data
         n = len(data)
+        sorted_indices = set()
         for i in range(n):
             min_idx = i
             for j in range(i + 1, n):
                 if data[j] < data[min_idx]:
                     min_idx = j
             data[i], data[min_idx] = data[min_idx], data[i]
-            self.draw_data(data, i)
+            sorted_indices.add(i)
+            self.draw_data(data, i, sorted_indices=sorted_indices)
             time.sleep(self.speed_scale.get())
-        self.draw_data(data)
+        self.draw_data(data, sorted_indices=set(range(n)))
 
     def binary_search(self):
         self.show_element_entry()  # Shows element entry for binary search
@@ -119,6 +128,7 @@ class SortVisualizer:
         try:
             # Split the input by spaces and convert to integers
             self.data = list(map(int, user_input.split()))
+            print(f"User input: {self.data}")  # Added print statement
             self.draw_data()
         except ValueError:
             self.draw_data(message='Invalid input. Please enter only integers.', message_color='red')
