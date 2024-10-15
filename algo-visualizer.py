@@ -3,6 +3,7 @@ import random
 import time
 import sqlite3
 from tkinter import messagebox
+from tkinter import ttk
 
 class SortVisualizer:
     def __init__(self, root):
@@ -21,9 +22,10 @@ class SortVisualizer:
         self.main_frame = tk.Frame(root)
         self.setup_main_ui()
 
-    # ... (previous methods remain the same)
     def create_tables(self):
         cursor = self.conn.cursor()
+    
+        # Create users table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY,
@@ -31,14 +33,35 @@ class SortVisualizer:
                 password TEXT NOT NULL
             )
         ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_arrays (
-                id INTEGER PRIMARY KEY,
-                user_id INTEGER,
-                array_data TEXT,
-                FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-        ''')
+
+        # Check if user_arrays table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_arrays'")
+        table_exists = cursor.fetchone()
+
+        if not table_exists:
+            # If user_arrays doesn't exist, create it with the correct structure
+            cursor.execute('''
+                CREATE TABLE user_arrays (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER,
+                    array_data TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            ''')
+        else:
+            # If user_arrays exists, check if it has the timestamp column
+            cursor.execute("PRAGMA table_info(user_arrays)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'timestamp' not in columns:
+                # Add timestamp column if it doesn't exist
+                cursor.execute('''
+                    ALTER TABLE user_arrays
+                    ADD COLUMN timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                ''')
+
+        # Create algorithm_info table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS algorithm_info (
                 id INTEGER PRIMARY KEY,
@@ -46,8 +69,6 @@ class SortVisualizer:
                 description TEXT
             )
         ''')
-        self.conn.commit()
-
     def setup_login_ui(self):
         self.login_frame = tk.Frame(self.root)
         self.login_frame.pack()
@@ -78,6 +99,7 @@ class SortVisualizer:
         self.array_entry.pack(side='left')
         self.update_button = tk.Button(self.array_frame, text="Update", command=self.update_data)
         self.update_button.pack(side='left')
+        
 
         # Speed control
         self.speed_frame = tk.Frame(self.main_frame)
@@ -108,6 +130,9 @@ class SortVisualizer:
         # Load previous array button
         self.load_button = tk.Button(self.button_frame, text="Load Previous Array", command=self.load_previous_array)
         self.load_button.pack(side='left')
+
+        self.history_button = tk.Button(self.button_frame, text="Show Array History", command=self.show_array_history)
+        self.history_button.pack(side='left')
 
         self.data = []
     def login(self):
@@ -161,8 +186,46 @@ class SortVisualizer:
         
         array_data = ' '.join(map(str, self.data))
         cursor = self.conn.cursor()
-        cursor.execute("INSERT INTO user_arrays (user_id, array_data) VALUES (?, ?)", (self.current_user, array_data))
+        cursor.execute("INSERT INTO user_arrays (user_id, array_data, timestamp) VALUES (?, ?, CURRENT_TIMESTAMP)", (self.current_user, array_data))
         self.conn.commit()
+
+    # New method to show array history
+    def show_array_history(self):
+        if not self.current_user:
+            messagebox.showerror("Error", "Please log in first")
+            return
+
+        history_window = tk.Toplevel(self.root)
+        history_window.title("Array History")
+
+        # Create a treeview to display the history
+        tree = ttk.Treeview(history_window, columns=('ID', 'Array', 'Timestamp'), show='headings')
+        tree.heading('ID', text='ID')
+        tree.heading('Array', text='Array')
+        tree.heading('Timestamp', text='Timestamp')
+        tree.pack(fill='both', expand=True)
+
+        # Fetch and display the history
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id, array_data, timestamp FROM user_arrays WHERE user_id = ? ORDER BY timestamp DESC", (self.current_user,))
+        for row in cursor.fetchall():
+            tree.insert('', 'end', values=row)
+
+        # Add a button to load the selected array
+        load_button = tk.Button(history_window, text="Load Selected Array", command=lambda: self.load_selected_array(tree))
+        load_button.pack()
+
+    def load_selected_array(self, tree):
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showerror("Error", "Please select an array from the history")
+            return
+
+        array_data = tree.item(selected_item)['values'][1]
+        self.array_entry.delete(0, tk.END)
+        self.array_entry.insert(0, array_data)
+        self.update_data()
+
 
     def update_data(self):
         user_input = self.array_entry.get()
