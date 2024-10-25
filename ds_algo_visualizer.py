@@ -1,153 +1,278 @@
-
 import tkinter as tk
-import random
+from tkinter import ttk, messagebox
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import time
+import mysql.connector
 
-class SortVisualizer:
-    def __init__(self, root):
-        self.root = root
+class AlgorithmVisualizer:
+    def __init__(self, master):
+        self.master = master
+        self.master.title("Algorithm Visualizer")
+        self.master.geometry("800x600")
 
-        # Canvas for visualization
-        self.canvas = tk.Canvas(root, width=600, height=400, bg='white')
-        self.canvas.pack()
+        self.array_var = tk.StringVar()
+        self.search_var = tk.StringVar()
+        self.speed_var = tk.DoubleVar(value=1.0)
+        self.db_connection = self.connect_to_db()  # Connect to the database
+        self.user_id = None
+        self.status_var = tk.StringVar(value="Ready")  # Initialize status variable
 
-        # Array entry for sorting algorithms
-        self.array_entry_label = tk.Label(root, text="Enter array (space-separated integers):")
-        self.array_entry_label.pack()
-        self.array_entry = tk.Entry(root)
-        self.array_entry.pack()
+        self.create_login_window()  # New: Login to choose user
 
-        # Speed control
-        self.speed_scale_label = tk.Label(root, text="Adjust Speed:")
-        self.speed_scale_label.pack()
-        self.speed_scale = tk.Scale(root, from_=0.01, to=1.0, resolution=0.01, orient=tk.HORIZONTAL)
-        self.speed_scale.set(0.1)  # Default speed
-        self.speed_scale.pack()
-
-        # Buttons to choose algorithms
-        self.bubble_button = tk.Button(root, text="Bubble Sort", command=self.bubble_sort)
-        self.bubble_button.pack(side='left')
-
-        self.selection_button = tk.Button(root, text="Selection Sort", command=self.selection_sort)
-        self.selection_button.pack(side='left')
-
-        self.binary_button = tk.Button(root, text="Binary Search", command=self.binary_search)
-        self.binary_button.pack(side='left')
-
-        # Element entry for binary search (hidden by default)
-        self.element_entry_label = tk.Label(root, text="Enter element to search:", fg='red')
-        self.element_entry_label.pack_forget()  # Hide by default
-        self.element_entry = tk.Entry(root)
-        self.element_entry.pack_forget()  # Hide by default
-
-        self.data = []
-
-    def draw_data(self, data=None, highlight_index=None, highlight_color='red', message=None, message_color='black', sorted_indices=None):
-        self.canvas.delete('all')
-        if data is None:
-            data = self.data
-        width = 600 / len(data)
-        for i, value in enumerate(data):
-            if sorted_indices and i in sorted_indices:
-                color = 'green'
-            elif highlight_index is not None and i == highlight_index:
-                color = highlight_color
-            else:
-                color = 'blue'
-            # Draw the bar
-            self.canvas.create_rectangle(i * width, 400 - value, (i + 1) * width, 400, fill=color)
-            # Display the value above the bar
-            self.canvas.create_text(i * width + width / 2, 400 - value - 10, text=str(value), fill='black', font=('Arial', 12))
-        if message:
-            self.canvas.create_text(300, 20, text=message, fill=message_color, font=('Arial', 16, 'bold'))  # Display message at the top
-        self.root.update()
-
-    def bubble_sort(self):
-        self.show_array_entry_only()
-        self.update_data()
-        data = self.data
-        n = len(data)
-        sorted_indices = set()
-        for i in range(n):
-            for j in range(n - i - 1):
-                if data[j] > data[j + 1]:
-                    data[j], data[j + 1] = data[j + 1], data[j]
-                self.draw_data(data, j + 1, sorted_indices=sorted_indices)
-                time.sleep(self.speed_scale.get())
-            sorted_indices.add(n - i - 1)
-        self.draw_data(data, sorted_indices=set(range(n)))
-
-    def selection_sort(self):
-        self.show_array_entry_only()
-        self.update_data()
-        data = self.data
-        n = len(data)
-        sorted_indices = set()
-        for i in range(n):
-            min_idx = i
-            for j in range(i + 1, n):
-                if data[j] < data[min_idx]:
-                    min_idx = j
-            data[i], data[min_idx] = data[min_idx], data[i]
-            sorted_indices.add(i)
-            self.draw_data(data, i, sorted_indices=sorted_indices)
-            time.sleep(self.speed_scale.get())
-        self.draw_data(data, sorted_indices=set(range(n)))
-
-    def binary_search(self):
-        self.show_element_entry()  # Shows element entry for binary search
-        self.update_data()
-        data = sorted(self.data)
-
-        # Gets the target element from the input box
+    def connect_to_db(self):
+        """Establish connection to MySQL database."""
         try:
-            target = int(self.element_entry.get())
-        except ValueError:
-            self.draw_data(data, message='Invalid input. Please enter an integer.', message_color='red')
+            conn = mysql.connector.connect(
+                host="127.0.0.1",
+                user="root", 
+                password="10062007",  
+                database="sort_visualizer"
+            )
+            return conn
+        except mysql.connector.Error as err:
+            messagebox.showerror("Database Error", f"Error connecting to the database: {err}")
+            return None
+
+    def create_login_window(self):
+        """Login window for user to select their account."""
+        login_frame = ttk.Frame(self.master)
+        login_frame.pack(expand=True)
+
+        ttk.Label(login_frame, text="Select User:").pack(pady=10)
+        self.user_combobox = ttk.Combobox(login_frame, state="readonly")
+        self.user_combobox.pack(pady=10)
+        self.load_users()
+
+        ttk.Button(login_frame, text="Login", command=self.select_user).pack(pady=20)
+
+    def load_users(self):
+        """Load users from the database into the combobox."""
+        cursor = self.db_connection.cursor()
+        cursor.execute("SELECT id, username FROM users")
+        users = cursor.fetchall()
+        self.user_combobox['values'] = [user[1] for user in users]
+        self.user_dict = {user[1]: user[0] for user in users}  # Map usernames to user_ids
+
+    def select_user(self):
+        """Select the user and proceed to the array selection."""
+        selected_user = self.user_combobox.get()
+        if selected_user:
+            self.user_id = self.user_dict[selected_user]  # Get the user_id
+            self.create_input_window()  # Move to input window after login
+
+    def create_input_window(self):
+        input_frame = ttk.Frame(self.master)
+        input_frame.pack(expand=True)
+
+        ttk.Label(input_frame, text="Enter array (space-separated numbers):").pack(pady=10)
+        ttk.Entry(input_frame, textvariable=self.array_var, width=40).pack(pady=10)
+        
+        # Option to load saved array from the database
+        ttk.Button(input_frame, text="Load Saved Array", command=self.load_saved_array).pack(pady=5)
+        
+        ttk.Button(input_frame, text="Create Visualizer", command=self.create_visualizer).pack(pady=20)
+
+    def load_saved_array(self):
+        """Load the saved array from the database for the current user."""
+        if not self.user_id:
+            messagebox.showerror("Error", "User not logged in.")
+            return
+        cursor = self.db_connection.cursor()
+        cursor.execute(f"SELECT array_data FROM user_arrays WHERE user_id = {self.user_id}")
+        result = cursor.fetchone()
+
+        if result:
+            self.array_var.set(result[0])
+            messagebox.showinfo("Loaded", "Array loaded from the database!")
+        else:
+            messagebox.showwarning("No Array", "No array found for the current user.")
+
+    def create_visualizer(self):
+        try:
+            self.array = [int(x) for x in self.array_var.get().split()]
+            if not self.array:
+                raise ValueError("Array is empty")
+        except ValueError as e:
+            tk.messagebox.showerror("Input Error", f"Invalid input: {str(e)}")
             return
 
-        left, right = 0, len(data) - 1
+        # Store the new array in the database
+        self.save_array_to_db()
+
+        for widget in self.master.winfo_children():
+            widget.destroy()
+
+        self.create_visualizer_window()
+
+    def save_array_to_db(self):
+        """Save the user's array to the database."""
+        if self.user_id and self.array_var.get():
+            cursor = self.db_connection.cursor()
+            cursor.execute(
+                "INSERT INTO user_arrays (user_id, array_data) VALUES (%s, %s)",
+                (self.user_id, self.array_var.get())
+            )
+            self.db_connection.commit()
+
+    def create_visualizer_window(self):
+        self.plot_frame = ttk.Frame(self.master)
+        self.plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        control_frame = ttk.Frame(self.master)
+        control_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
+
+        self.fig, self.ax = plt.subplots()
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.plot_frame)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        self.update_plot(self.array, "Initial Array")
+
+        speed_frame = ttk.Frame(control_frame)
+        speed_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        ttk.Label(speed_frame, text="Speed:").pack(side=tk.LEFT, padx=5)
+        ttk.Scale(speed_frame, from_=0.1, to=2.0, orient=tk.HORIZONTAL, variable=self.speed_var, length=200).pack(side=tk.LEFT, padx=5)
+
+        button_frame = ttk.Frame(control_frame)
+        button_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        ttk.Button(button_frame, text="Bubble Sort", command=self.run_bubble_sort).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Selection Sort", command=self.run_selection_sort).pack(side=tk.LEFT, padx=5)
+
+        # New "Change Array" button to update the array and restart the visualizer
+        ttk.Button(button_frame, text="Change Array", command=self.update_array).pack(side=tk.LEFT, padx=5)
+
+        binary_frame = ttk.Frame(control_frame)
+        binary_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+
+        ttk.Label(binary_frame, text="Binary Search Value:").pack(side=tk.LEFT, padx=5)
+        search_entry = ttk.Entry(binary_frame, textvariable=self.search_var, width=10)
+        search_entry.pack(side=tk.LEFT, padx=5)
+        ttk.Button(binary_frame, text="Search", command=self.run_binary_search).pack(side=tk.LEFT, padx=5)
+
+        search_entry.bind('<Return>', self.run_binary_search_keypress)
+
+        ttk.Label(control_frame, textvariable=self.status_var).pack(side=tk.BOTTOM, pady=5)
+
+    def update_plot(self, arr, title, color='blue', highlight_indices=None, message=None):
+        self.ax.clear()
+        bars = self.ax.bar(range(len(arr)), arr, color=color)
+        
+        if highlight_indices:
+            for i in highlight_indices:
+                if 0 <= i < len(arr):
+                    bars[i].set_color('green')  # Highlight found element in green
+
+        # Only set title if it's not a binary search
+        if "Binary Search" not in title:
+            self.ax.set_title(title)
+        
+        for i, v in enumerate(arr):
+            self.ax.text(i, v/2, str(v), ha='center', va='center')
+
+        # Display message if provided
+        if message:
+            max_height = max(arr) if arr else 1
+            self.ax.text(len(arr) / 2, max_height * 1.05, message, ha='center', va='bottom', fontsize=12, color='red', fontweight='bold')
+
+        self.canvas.draw()
+        self.master.update()
+        time.sleep(1 / self.speed_var.get())
+
+    def bubble_sort(self, arr):
+        """Bubble Sort algorithm."""
+        n = len(arr)
+        for i in range(n):
+            for j in range(0, n-i-1):
+                if arr[j] > arr[j+1]:
+                    arr[j], arr[j+1] = arr[j+1], arr[j]
+                    yield arr.copy(), [j, j+1]
+
+    def run_bubble_sort(self):
+        self.status_var.set("Running Bubble Sort...")
+        arr = self.array.copy()
+        for step, highlight in self.bubble_sort(arr):
+            self.update_plot(step, "Bubble Sort", highlight_indices=highlight)
+        self.update_plot(arr, "Bubble Sort - Sorted", color='green')
+        self.status_var.set("Bubble Sort completed")
+
+    def selection_sort(self, arr):
+        """Selection Sort algorithm."""
+        n = len(arr)
+        for i in range(n):
+            min_idx = i
+            for j in range(i+1, n):
+                if arr[j] < arr[min_idx]:
+                    min_idx = j
+            arr[i], arr[min_idx] = arr[min_idx], arr[i]
+            yield arr.copy(), [i, min_idx]
+
+    def run_selection_sort(self):
+        self.status_var.set("Running Selection Sort...")
+        arr = self.array.copy()
+        for step, highlight in self.selection_sort(arr):
+            self.update_plot(step, "Selection Sort", highlight_indices=highlight)
+        self.update_plot(arr, "Selection Sort - Sorted", color='green')
+        self.status_var.set("Selection Sort completed")
+
+    def binary_search(self, arr, target):
+        """Binary Search algorithm."""
+        left, right = 0, len(arr) - 1
         while left <= right:
             mid = (left + right) // 2
-            self.draw_data(data, message=f'Searching for: {target}')
-            self.canvas.create_line(mid * 600 / len(data), 0, mid * 600 / len(data), 400, fill='red', width=2)
-            self.root.update()
-            time.sleep(self.speed_scale.get())
-
-            if data[mid] == target:
-                self.draw_data(data, mid, highlight_color='green', message='Element found!', message_color='green')
-                return
-            elif data[mid] < target:
+            yield arr.copy(), [mid]  # Highlight the mid index
+            if arr[mid] < target:
                 left = mid + 1
-            else:
+            elif arr[mid] > target:
                 right = mid - 1
+            else:
+                return mid  # Element found
+        return -1  # Element not found
 
-        self.draw_data(data, message='Element not found.', message_color='red')
-
-    def update_data(self):
-        user_input = self.array_entry.get()
+    def run_binary_search(self):
+        target = self.search_var.get()
+        if not target:
+            messagebox.showwarning("Input Error", "Please enter a value to search.")
+            return
+        
         try:
-            # Split the input by spaces and convert to integers
-            self.data = list(map(int, user_input.split()))
-            print(f"User input: {self.data}")  # Added print statement
-            self.draw_data()
+            target = int(target)
         except ValueError:
-            self.draw_data(message='Invalid input. Please enter only integers.', message_color='red')
+            messagebox.showerror("Input Error", "Please enter a valid number.")
+            return
 
-    def show_array_entry_only(self):
-        """Show array entry and hide element entry for sorting algorithms."""
-        self.array_entry_label.pack()
-        self.array_entry.pack()
-        self.element_entry_label.pack_forget()
-        self.element_entry.pack_forget()
+        self.status_var.set("Running Binary Search...")
+        arr = sorted(self.array.copy())  # Ensure the array is sorted for binary search
 
-    def show_element_entry(self):
-        """Show element entry for binary search."""
-        self.show_array_entry_only()  # Shows array entry as well
-        self.element_entry_label.pack()
-        self.element_entry.pack()
+        for step, highlight in self.binary_search(arr, target):
+            self.update_plot(step, "Binary Search", highlight_indices=highlight)
 
-root = tk.Tk()
-root.title('Algorithm Visualizer')
-app = SortVisualizer(root)
-root.mainloop()
+        # Final check if the element was found
+        found_index = arr.index(target) if target in arr else -1  # Get index of found element
+
+        if found_index != -1:
+            self.update_plot(arr, "Binary Search", highlight_indices=[found_index], message=f"Element {target} found at index {found_index}!")
+        else:
+            self.update_plot(arr, "Binary Search", message=f"Element {target} not found.")
+        
+        self.status_var.set("Binary Search completed")
+
+    def run_binary_search_keypress(self, event):
+        self.run_binary_search()
+
+    def update_array(self):
+        """Restart the input window to change the array."""
+        for widget in self.master.winfo_children():
+            widget.destroy()
+        self.create_input_window()
+
+    def on_close(self):
+        """Close the database connection on exit."""
+        if self.db_connection:
+            self.db_connection.close()
+        self.master.quit()
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = AlgorithmVisualizer(root)
+    root.protocol("WM_DELETE_WINDOW", app.on_close)  # Ensure database closes on exit
+    root.mainloop()
