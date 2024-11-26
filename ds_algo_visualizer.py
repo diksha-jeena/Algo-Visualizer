@@ -276,3 +276,4 @@ if __name__ == "__main__":
     app = AlgorithmVisualizer(root)
     root.protocol("WM_DELETE_WINDOW", app.on_close)  # Ensure database closes on exit
     root.mainloop()
+
